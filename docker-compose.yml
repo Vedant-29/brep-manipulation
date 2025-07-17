@@ -1,5 +1,5 @@
 services:
-  cad-runner:
+  brep-manipulation:
     platform: linux/amd64
     build:
       context: .
