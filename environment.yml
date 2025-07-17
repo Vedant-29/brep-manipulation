@@ -20,10 +20,6 @@ dependencies:
   - pandas
   - plyfile
   - py7zr
-  - pillow
-  - flask-cors
+  - pillow  # For image processing if needed
   - pip:
       - matplotlib
-      - httpx
-      - python-multipart
-      - werkzeug
