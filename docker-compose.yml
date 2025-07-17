@@ -17,13 +17,7 @@ services:
       - .:/app
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - /root/.Xauthority:/root/.Xauthority:ro
-    networks:
-      - cad-network
     security_opt:
       - seccomp:unconfined
     cap_add:
       - SYS_PTRACE
-
-networks:
-  cad-network:
-    external: true
