@@ -1,4 +1,4 @@
-name: brep_manipulation
+name: membership_transfer
 channels:
   - conda-forge
   - defaults

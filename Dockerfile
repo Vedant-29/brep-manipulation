@@ -1,5 +1,4 @@
 FROM continuumio/miniconda3:latest
-
 # Set timezone and suppress interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Kolkata
@@ -33,9 +32,6 @@ RUN apt-get update && apt-get install -y \
     x11-apps \
     x11-utils \
     xauth \
-    build-essential \
-    cmake \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy environment first to leverage Docker cache
@@ -63,9 +59,6 @@ ENV DISPLAY=:1
 ENV LIBGL_ALWAYS_SOFTWARE=1
 ENV MESA_GL_VERSION_OVERRIDE=3.3
 ENV GALLIUM_DRIVER=llvmpipe
-
-# Expose port
-EXPOSE 5002
 
 # Use conda + entrypoint script
 ENTRYPOINT ["./entrypoint.sh"]
