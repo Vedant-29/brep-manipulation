@@ -1,4 +1,4 @@
-name: membership_transfer
+name: brep_manipulation
 channels:
   - conda-forge
   - defaults
@@ -20,6 +20,10 @@ dependencies:
   - pandas
   - plyfile
   - py7zr
-  - pillow  # For image processing if needed
+  - pillow
+  - flask-cors
   - pip:
       - matplotlib
+      - httpx
+      - python-multipart
+      - werkzeug 
