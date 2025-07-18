@@ -1,12 +1,12 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-import os
 import tempfile
+import os
 import logging
 import json
 import traceback
-from manipulation_service import BrepManipulationService
-from brep_operations import BrepOperations
+import numpy as np
+from brep_builder import construct_brep, save_step_file
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -15,107 +15,69 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
-# Initialize services
-manipulation_service = BrepManipulationService()
-brep_ops = BrepOperations()
-
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'service': 'brep-manipulation',
+        'service': 'brep-builder',
         'version': '1.0.0'
     })
 
-@app.route('/manipulate-brep', methods=['POST'])
-def manipulate_brep():
-    """Main BREP manipulation endpoint"""
+@app.route('/build-brep', methods=['POST'])
+def build_brep():
+    """Build BREP from JSON input and return STEP file content"""
     try:
         data = request.get_json()
         
-        operation_type = data.get('operation_type')
-        step_content = data.get('step_content')
-        parameters = data.get('parameters', {})
+        # Extract required parameters
+        surf_wcs = np.array(data.get('surf_wcs', []))
+        edge_wcs = [np.array(edge) for edge in data.get('edge_wcs', [])]
+        face_edge_adj = data.get('face_edge_adj', [])
+        edge_vertex_adj = np.array(data.get('edge_vertex_adj', []))
         
-        logger.info(f"Received manipulation request: {operation_type}")
+        logger.info(f"Building BREP with {len(surf_wcs)} surfaces, {len(edge_wcs)} edges")
         
-        if not step_content:
+        # Validate input
+        if len(surf_wcs) == 0:
             return jsonify({
                 'success': False,
-                'error': 'No STEP content provided'
+                'error': 'No surface data provided (surf_wcs is empty)'
             }), 400
         
-        # Route to appropriate manipulation method
-        if operation_type == 'extend_face':
-            result = manipulation_service.extend_face(
-                step_content,
-                parameters.get('face_id'),
-                parameters
-            )
-        elif operation_type == 'extend_edge':
-            result = manipulation_service.extend_edge(
-                step_content,
-                parameters.get('edge_id'),
-                parameters
-            )
-        elif operation_type == 'extrude_face':
-            result = manipulation_service.extrude_face(
-                step_content,
-                parameters.get('face_id'),
-                parameters
-            )
-        elif operation_type == 'offset_face':
-            result = manipulation_service.offset_face(
-                step_content,
-                parameters.get('face_id'),
-                parameters
-            )
-        elif operation_type == 'boolean_union':
-            result = manipulation_service.boolean_operation(
-                step_content,
-                parameters.get('other_step_content'),
-                'union'
-            )
-        elif operation_type == 'boolean_difference':
-            result = manipulation_service.boolean_operation(
-                step_content,
-                parameters.get('other_step_content'),
-                'difference'
-            )
-        elif operation_type == 'boolean_intersection':
-            result = manipulation_service.boolean_operation(
-                step_content,
-                parameters.get('other_step_content'),
-                'intersection'
-            )
-        elif operation_type == 'fillet_edge':
-            result = manipulation_service.fillet_edge(
-                step_content,
-                parameters.get('edge_id'),
-                parameters
-            )
-        elif operation_type == 'chamfer_edge':
-            result = manipulation_service.chamfer_edge(
-                step_content,
-                parameters.get('edge_id'),
-                parameters
-            )
-        else:
+        if len(edge_wcs) == 0:
             return jsonify({
                 'success': False,
-                'error': f'Unknown operation type: {operation_type}'
+                'error': 'No edge data provided (edge_wcs is empty)'
             }), 400
+        
+        if len(face_edge_adj) == 0:
+            return jsonify({
+                'success': False,
+                'error': 'No face-edge adjacency data provided'
+            }), 400
+        
+        if len(edge_vertex_adj) == 0:
+            return jsonify({
+                'success': False,
+                'error': 'No edge-vertex adjacency data provided'
+            }), 400
+        
+        # Build the BREP
+        solid = construct_brep(surf_wcs, edge_wcs, face_edge_adj, edge_vertex_adj)
+        
+        # Convert to STEP file content
+        step_content = save_step_file(solid)
         
         return jsonify({
             'success': True,
-            'modified_step_content': result,
-            'operation_applied': operation_type,
-            'parameters_used': parameters
+            'step_content': step_content,
+            'surfaces_count': len(surf_wcs),
+            'edges_count': len(edge_wcs)
         })
         
     except Exception as e:
-        logger.error(f"Error in BREP manipulation: {str(e)}")
+        logger.error(f"Error building BREP: {str(e)}")
         logger.error(traceback.format_exc())
         return jsonify({
             'success': False,
@@ -123,46 +85,40 @@ def manipulate_brep():
             'traceback': traceback.format_exc()
         }), 500
 
-@app.route('/validate-step', methods=['POST'])
-def validate_step():
-    """Validate STEP file content"""
+@app.route('/build-brep/download', methods=['POST'])
+def build_brep_download():
+    """Build BREP and return STEP file for download"""
     try:
         data = request.get_json()
-        step_content = data.get('step_content')
         
-        is_valid, info = brep_ops.validate_step_content(step_content)
+        # Extract required parameters
+        surf_wcs = np.array(data.get('surf_wcs', []))
+        edge_wcs = [np.array(edge) for edge in data.get('edge_wcs', [])]
+        face_edge_adj = data.get('face_edge_adj', [])
+        edge_vertex_adj = np.array(data.get('edge_vertex_adj', []))
         
-        return jsonify({
-            'valid': is_valid,
-            'info': info
-        })
+        # Build the BREP
+        solid = construct_brep(surf_wcs, edge_wcs, face_edge_adj, edge_vertex_adj)
         
-    except Exception as e:
-        return jsonify({
-            'valid': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/get-topology-info', methods=['POST'])
-def get_topology_info():
-    """Get detailed topology information for manipulation"""
-    try:
-        data = request.get_json()
-        step_content = data.get('step_content')
+        # Create temporary STEP file
+        with tempfile.NamedTemporaryFile(suffix='.step', delete=False) as temp_file:
+            save_step_file(solid, temp_file.name)
+            temp_filename = temp_file.name
         
-        topology_info = brep_ops.get_detailed_topology_info(step_content)
-        
-        return jsonify({
-            'success': True,
-            'topology_info': topology_info
-        })
+        return send_file(
+            temp_filename,
+            as_attachment=True,
+            download_name='generated_brep.step',
+            mimetype='application/step'
+        )
         
     except Exception as e:
+        logger.error(f"Error building BREP for download: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
 
 if __name__ == '__main__':
-    logger.info("Starting BREP Manipulation Service on port 5002")
+    logger.info("Starting BREP Builder Service on port 5002")
     app.run(host='0.0.0.0', port=5002, debug=True)
